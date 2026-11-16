@@ -1,67 +1,73 @@
-// ai-excited-01 entry v2 — "Celestial Angel Scattering Planets".
+// ai-excited-01 entry, revision v2-r1 — "Celestial Angel Scattering Planets".
 //
-// A colossal winged celestial being, seen three-quarter, scattering a
-// handful of glowing planets from its open hand into a spiral galaxy
-// below. The image is the entry; this program only places its exact
-// bytes where the grader expects them, then proves the copy landed
-// whole. No network, no randomness, no re-encoding: every run writes
-// the identical file, or fails loudly instead of passing silently.
-import { copyFileSync, mkdirSync, readFileSync, statSync } from "node:fs";
+// The picture is the entry: a timeless winged celestial being scattering
+// five large glowing worlds from its open hand into a spiral galaxy
+// below. This program does nothing creative. It moves the exact bytes of
+// entry.png into the grader's output directory and refuses to finish
+// unless the copy is whole: right size, right shape, identical hash.
+// It never touches the network, never rolls dice, never re-encodes the
+// image — run it twice or two hundred times and the bytes are the same.
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const MAX_BYTES = 1048576;
-const MAX_SIDE = 1024;
+const BYTE_LIMIT = 1048576; // 1 MiB, the competition's file cap.
+const SIDE_LIMIT = 1024; // No side of the image may exceed this.
 
-const repoDir = dirname(fileURLToPath(import.meta.url));
-const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
-const source = join(repoDir, "entry.png");
-const target = join(outDir, "entry.png");
+const here = dirname(fileURLToPath(import.meta.url));
+const input = join(here, "entry.png");
+const outputDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
+const output = join(outputDir, "entry.png");
 
-function sha256(path: string): string {
+function fingerprint(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
-function dimensions(bytes: Buffer): { width: number; height: number } {
-  // PNG: width/height are the first 8 bytes of the IHDR chunk.
-  if (bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+function readSize(bytes: Buffer): { width: number; height: number } {
+  const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (bytes.length >= 24 && bytes.subarray(0, 8).equals(pngMagic)) {
     return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
   }
-  // JPEG: walk segments until a Start Of Frame marker gives dimensions.
-  if (bytes[0] === 0xff && bytes[1] === 0xd8) {
-    let i = 2;
-    while (i + 9 < bytes.length) {
-      if (bytes[i] !== 0xff) throw new Error("entry.png: corrupt JPEG marker");
-      const marker = bytes[i + 1];
-      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
-        return { width: bytes.readUInt16BE(i + 7), height: bytes.readUInt16BE(i + 5) };
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xd8) {
+    // JPEG: step through the segments until the frame header reports size.
+    let offset = 2;
+    while (offset + 9 < bytes.length) {
+      if (bytes[offset] !== 0xff) {
+        throw new Error("entry.png is not a well-formed JPEG");
       }
-      const len = bytes.readUInt16BE(i + 2);
-      i += 2 + len;
+      const marker = bytes[offset + 1];
+      const isFrame =
+        marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+      if (isFrame) {
+        return { width: bytes.readUInt16BE(offset + 7), height: bytes.readUInt16BE(offset + 5) };
+      }
+      offset += 2 + bytes.readUInt16BE(offset + 2);
     }
-    throw new Error("entry.png: no JPEG frame found");
+    throw new Error("entry.png has no JPEG frame header");
   }
-  throw new Error("entry.png: not a PNG or JPEG (magic bytes mismatch)");
+  throw new Error("entry.png is neither PNG nor JPEG");
 }
 
-// Gate the source before copying: the entry must already be legal.
-const bytes = readFileSync(source);
-if (bytes.length > MAX_BYTES) {
-  throw new Error(`entry.png too large: ${bytes.length} bytes > ${MAX_BYTES}`);
+if (!existsSync(input)) {
+  throw new Error("entry.png is missing from the repository");
 }
-const { width, height } = dimensions(bytes);
-if (width > MAX_SIDE || height > MAX_SIDE) {
-  throw new Error(`entry.png too big: ${width}x${height} > ${MAX_SIDE}x${MAX_SIDE}`);
+const data = readFileSync(input);
+if (data.length > BYTE_LIMIT) {
+  throw new Error(`entry.png is ${data.length} bytes, over the ${BYTE_LIMIT} limit`);
+}
+const size = readSize(data);
+if (size.width > SIDE_LIMIT || size.height > SIDE_LIMIT) {
+  throw new Error(`entry.png is ${size.width}x${size.height}, over ${SIDE_LIMIT}x${SIDE_LIMIT}`);
 }
 
-mkdirSync(outDir, { recursive: true });
-copyFileSync(source, target);
+mkdirSync(outputDir, { recursive: true });
+copyFileSync(input, output);
 
-// Integrity: the copy must be byte-identical to the source.
-if (statSync(target).size !== bytes.length) {
-  throw new Error("entry.png copy incomplete: size mismatch");
+// Prove the copy landed whole before calling the run a success.
+if (statSync(output).size !== data.length) {
+  throw new Error("entry.png copy is short: byte count does not match the source");
 }
-if (sha256(target) !== sha256(source)) {
-  throw new Error("entry.png copy incomplete: sha256 mismatch");
+if (fingerprint(output) !== fingerprint(input)) {
+  throw new Error("entry.png copy is corrupt: sha256 does not match the source");
 }
