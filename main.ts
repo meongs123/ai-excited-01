@@ -1,7 +1,7 @@
 // ai-excited-01 entry, revision v2-r1 — "Celestial Angel Scattering Planets".
 //
 // The picture is the entry: a timeless winged celestial being scattering
-// five large glowing worlds from its open hand into a spiral galaxy
+// seven large glowing worlds from its open hand into a spiral galaxy
 // below. This program does nothing creative. It moves the exact bytes of
 // entry.png into the grader's output directory and refuses to finish
 // unless the copy is whole: right size, right shape, identical hash.
